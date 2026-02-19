@@ -6,28 +6,40 @@ import io
 import os
 import sys
 import tempfile
+import traceback
 
-import runpod
-import torch
-import torchaudio
+print("=== Handler starting ===", flush=True)
 
-sys.path.append("/app/CosyVoice")
-sys.path.append("/app/CosyVoice/third_party/Matcha-TTS")
+try:
+    import runpod
+    print("runpod imported", flush=True)
+    import torch
+    print(f"torch {torch.__version__} imported", flush=True)
+    import torchaudio
+    print(f"torchaudio {torchaudio.__version__} imported", flush=True)
 
-from cosyvoice.cli.cosyvoice import CosyVoice2
+    sys.path.append("/app/CosyVoice")
+    sys.path.append("/app/CosyVoice/third_party/Matcha-TTS")
+
+    from cosyvoice.cli.cosyvoice import CosyVoice2
+    print("CosyVoice2 imported", flush=True)
+except Exception as e:
+    print(f"IMPORT ERROR: {e}", flush=True)
+    traceback.print_exc()
+    sys.exit(1)
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/app/pretrained_models/CosyVoice2-0.5B")
 
 # Download model if not present
 if not os.path.exists(os.path.join(MODEL_DIR, "cosyvoice.yaml")):
-    print(f"Model not found at {MODEL_DIR}, downloading...")
+    print(f"Model not found at {MODEL_DIR}, downloading...", flush=True)
     from huggingface_hub import snapshot_download
     snapshot_download("FunAudioLLM/CosyVoice2-0.5B", local_dir=MODEL_DIR)
-    print("Model downloaded.")
+    print("Model downloaded.", flush=True)
 
-print(f"Loading CosyVoice2 from {MODEL_DIR}...")
+print(f"Loading CosyVoice2 from {MODEL_DIR}...", flush=True)
 model = CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False)
-print(f"CosyVoice2 ready. sample_rate={model.sample_rate}")
+print(f"CosyVoice2 ready. sample_rate={model.sample_rate}", flush=True)
 
 
 def decode_audio(audio_input: str) -> str:
