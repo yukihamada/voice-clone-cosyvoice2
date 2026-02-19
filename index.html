@@ -227,17 +227,17 @@ textarea {
 <body>
 <header>
   <h1>Voice Clone</h1>
-  <p>CosyVoice2 on Replicate</p>
+  <p>CosyVoice2 on RunPod Serverless</p>
 </header>
 
 <div class="container">
   <!-- API Config -->
   <div class="card">
-    <h2>Replicate API</h2>
+    <h2>RunPod API</h2>
     <div class="settings-row">
       <label>
-        API Token
-        <input type="password" id="apiKeyInput" placeholder="r8_xxxx...">
+        API Key
+        <input type="password" id="apiKeyInput" placeholder="rpa_xxxx...">
       </label>
     </div>
   </div>
@@ -305,8 +305,9 @@ textarea {
 <script>
 const $ = id => document.getElementById(id);
 
-// Persist API token
-const STORAGE_KEY = 'vc_replicate_token';
+// Persist API key
+const STORAGE_KEY = 'vc_runpod_key';
+const ENDPOINT_ID = 'g1kguk15p6wb3z';
 $('apiKeyInput').value = localStorage.getItem(STORAGE_KEY) || '';
 $('apiKeyInput').addEventListener('input', e => localStorage.setItem(STORAGE_KEY, e.target.value));
 
@@ -400,88 +401,104 @@ async function blobToDataURI(blob) {
   });
 }
 
+// Convert blob to base64 string
+async function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 // Generate
 $('generateBtn').addEventListener('click', async () => {
-  const apiToken = $('apiKeyInput').value.trim();
+  const apiKey = $('apiKeyInput').value.trim();
   const text = $('textInput').value.trim();
   const task = $('taskSelect').value;
 
-  if (!apiToken) return setStatus('Replicate API Token is required', true);
+  if (!apiKey) return setStatus('RunPod API Key is required', true);
   if (!text) return setStatus('Text is required', true);
   if (!audioBlob) return setStatus('Reference audio is required', true);
 
   const btn = $('generateBtn');
   btn.disabled = true;
-  setStatus('<span class="spinner"></span>Uploading audio & starting prediction...');
+  setStatus('<span class="spinner"></span>Uploading audio & starting job...');
   $('resultCard').classList.remove('visible');
 
   try {
-    // Convert audio to data URI for Replicate
-    const audioDataURI = await blobToDataURI(audioBlob);
+    const audioBase64 = await blobToBase64(audioBlob);
 
-    const payload = {
-      version: "669b1cd618f2747d2237350e868f5c313f3b548fc803ca4e57adfaba778b042d",
-      input: {
-        task: task,
-        tts_text: text,
-        source_audio: audioDataURI,
-        source_transcript: $('sourceTranscript').value.trim() || undefined,
-      }
+    // Map UI task to handler mode
+    const modeMap = {
+      'Zero-shot voice cloning': 'zero_shot',
+      'Cross-lingual voice cloning': 'cross_lingual',
+      'Instructed generation': 'instruct',
+    };
+    const mode = modeMap[task] || 'zero_shot';
+
+    const input = {
+      text: text,
+      mode: mode,
+      prompt_audio: audioBase64,
+      prompt_text: $('sourceTranscript').value.trim() || '',
+      format: 'mp3',
     };
 
-    if (task === 'Instructed generation') {
-      payload.input.instruction = $('instructInput').value.trim();
+    if (mode === 'instruct') {
+      input.instruct_text = $('instructInput').value.trim();
     }
 
-    // Create prediction (via local proxy to avoid CORS)
-    const baseUrl = window.location.origin;
-    const createResp = await fetch(`${baseUrl}/api/predictions`, {
+    // Submit job to RunPod Serverless
+    const runUrl = `https://api.runpod.ai/v2/${ENDPOINT_ID}/run`;
+    const createResp = await fetch(runUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiToken}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ input }),
     });
 
-    let prediction = await createResp.json();
+    let result = await createResp.json();
+    if (result.error) throw new Error(result.error);
 
-    if (prediction.error) {
-      throw new Error(prediction.error.detail || prediction.error);
-    }
+    const jobId = result.id;
+    setStatus(`<span class="spinner"></span>Job submitted (${jobId}). Waiting for worker...`);
 
-    // Poll if not completed (Prefer: wait may timeout)
+    // Poll for completion
     let pollCount = 0;
-    while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
+    const statusUrl = `https://api.runpod.ai/v2/${ENDPOINT_ID}/status/${jobId}`;
+    while (true) {
       pollCount++;
-      if (pollCount > 120) throw new Error('Prediction timed out after 10 minutes');
+      if (pollCount > 120) throw new Error('Job timed out after 10 minutes');
 
-      setStatus(`<span class="spinner"></span>Processing... (${prediction.status}, ${pollCount * 5}s)`);
       await new Promise(r => setTimeout(r, 5000));
 
-      const pollResp = await fetch(`${baseUrl}/api/predictions/${prediction.id}`, {
-        headers: { 'Authorization': `Bearer ${apiToken}` },
+      const pollResp = await fetch(statusUrl, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
       });
-      prediction = await pollResp.json();
+      result = await pollResp.json();
+
+      if (result.status === 'COMPLETED') break;
+      if (result.status === 'FAILED') throw new Error(result.error || 'Job failed');
+
+      setStatus(`<span class="spinner"></span>${result.status}... (${pollCount * 5}s)`);
     }
 
-    if (prediction.status === 'failed') {
-      throw new Error(prediction.error || 'Prediction failed');
-    }
+    const output = result.output;
+    if (output.error) throw new Error(output.error);
 
-    // Get output audio URL
-    const outputUrl = prediction.output;
-    if (!outputUrl) throw new Error('No output audio returned');
-
-    // Fetch the audio
-    const audioResp = await fetch(outputUrl);
-    const audioData = await audioResp.blob();
+    // Decode base64 audio
+    const audioBytes = Uint8Array.from(atob(output.audio_base64), c => c.charCodeAt(0));
+    const mimeType = output.format === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+    const audioData = new Blob([audioBytes], { type: mimeType });
     const audioUrl = URL.createObjectURL(audioData);
 
     $('resultPlayer').src = audioUrl;
-    $('resultMeta').textContent = `Prediction: ${prediction.id} | Metrics: ${JSON.stringify(prediction.metrics || {})}`;
+    $('resultMeta').textContent = `Duration: ${(output.duration_ms / 1000).toFixed(1)}s | Sample rate: ${output.sample_rate}Hz | Format: ${output.format}`;
     $('downloadBtn').href = audioUrl;
-    $('downloadBtn').download = 'voice-clone.wav';
+    $('downloadBtn').download = `voice-clone.${output.format}`;
     $('resultCard').classList.add('visible');
     hideStatus();
     $('resultPlayer').play();
