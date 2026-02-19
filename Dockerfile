@@ -3,9 +3,10 @@ FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ffmpeg sox libsox-dev wget ca-certificates \
+    git git-lfs ffmpeg sox libsox-dev wget ca-certificates \
     build-essential && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    git lfs install
 
 # Pre-install build deps that CosyVoice requirements need
 RUN pip install --no-cache-dir cython setuptools
@@ -22,8 +23,8 @@ RUN pip install --no-cache-dir runpod requests modelscope
 
 ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS:${PYTHONPATH}"
 
-# Download CosyVoice2-0.5B model (baked in for fast cold start)
-RUN python -c "from modelscope import snapshot_download; snapshot_download('iic/CosyVoice2-0.5B', local_dir='/app/pretrained_models/CosyVoice2-0.5B')"
+# Download CosyVoice2-0.5B model via git-lfs (avoids Python import issues)
+RUN git clone https://www.modelscope.cn/iic/CosyVoice2-0.5B.git /app/pretrained_models/CosyVoice2-0.5B
 
 ENV MODEL_DIR=/app/pretrained_models/CosyVoice2-0.5B
 
