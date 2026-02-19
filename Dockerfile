@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
+FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
 
 WORKDIR /app
 
@@ -11,18 +11,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir cython setuptools
 
 # Clone CosyVoice and install its deps
-# openai-whisper's setup.py needs pkg_resources at build time, so install it without build isolation first
+# Remove torch/torchaudio pins to keep the pre-installed 2.5.1 (transformers 4.51.3 needs >=2.5)
 RUN git clone --depth 1 https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice && \
+    sed -i '/^torch==/d; /^torchaudio==/d' /app/CosyVoice/requirements.txt && \
     pip install --no-cache-dir --no-build-isolation openai-whisper==20231117 && \
     cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt
 
-# Install handler deps (use huggingface_hub instead of modelscope to avoid torchvision conflicts)
-RUN pip install --no-cache-dir runpod requests huggingface_hub
+# Install handler deps
+RUN pip install --no-cache-dir runpod requests modelscope
 
 ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS:${PYTHONPATH}"
 
-# Download CosyVoice2-0.5B model from HuggingFace (baked in for fast cold start)
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/CosyVoice2-0.5B', local_dir='/app/pretrained_models/CosyVoice2-0.5B')"
+# Download CosyVoice2-0.5B model (baked in for fast cold start)
+RUN python -c "from modelscope import snapshot_download; snapshot_download('iic/CosyVoice2-0.5B', local_dir='/app/pretrained_models/CosyVoice2-0.5B')"
 
 ENV MODEL_DIR=/app/pretrained_models/CosyVoice2-0.5B
 
