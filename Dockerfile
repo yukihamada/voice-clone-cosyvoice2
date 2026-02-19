@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git ffmpeg sox libsox-dev wget ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
+# Ensure setuptools is available (needed by CosyVoice deps)
+RUN pip install --no-cache-dir setuptools
+
 # Clone CosyVoice and install its deps
 RUN git clone --depth 1 https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice && \
     cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt
