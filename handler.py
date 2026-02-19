@@ -10,21 +10,43 @@ import traceback
 
 print("=== Handler starting ===", flush=True)
 
-import runpod
-print("runpod imported", flush=True)
-import torch
-print(f"torch {torch.__version__} imported, cuda={torch.cuda.is_available()}", flush=True)
-import torchaudio
-print(f"torchaudio {torchaudio.__version__} imported", flush=True)
+# Phase 1: Basic imports
+try:
+    import runpod
+    print("[phase1] runpod imported", flush=True)
+except Exception as e:
+    print(f"[phase1] FATAL: runpod import failed: {e}", flush=True)
+    sys.exit(1)
 
-sys.path.append("/app/CosyVoice")
-sys.path.append("/app/CosyVoice/third_party/Matcha-TTS")
+# Phase 2: ML imports (deferred to avoid blocking startup)
+_torch = None
+_torchaudio = None
+_CosyVoice2 = None
+_model = None
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/app/pretrained_models/CosyVoice2-0.5B")
 
-# Lazy-loaded model — initialized on first request so runpod.serverless.start()
-# is called immediately and the worker doesn't crash before registering.
-_model = None
+
+def _ensure_imports():
+    global _torch, _torchaudio, _CosyVoice2
+    if _torch is not None:
+        return
+    print("[init] Importing torch...", flush=True)
+    import torch
+    _torch = torch
+    print(f"[init] torch {torch.__version__} cuda={torch.cuda.is_available()}", flush=True)
+    if torch.cuda.is_available():
+        print(f"[init] GPU: {torch.cuda.get_device_name(0)}, mem={torch.cuda.get_device_properties(0).total_mem / 1e9:.1f}GB", flush=True)
+    import torchaudio
+    _torchaudio = torchaudio
+    print(f"[init] torchaudio {torchaudio.__version__}", flush=True)
+
+    sys.path.insert(0, "/app/CosyVoice")
+    sys.path.insert(0, "/app/CosyVoice/third_party/Matcha-TTS")
+
+    from cosyvoice.cli.cosyvoice import CosyVoice2
+    _CosyVoice2 = CosyVoice2
+    print("[init] CosyVoice2 imported", flush=True)
 
 
 def _get_model():
@@ -32,19 +54,17 @@ def _get_model():
     if _model is not None:
         return _model
 
-    print(f"[lazy-init] Importing CosyVoice2...", flush=True)
-    from cosyvoice.cli.cosyvoice import CosyVoice2
-    print(f"[lazy-init] CosyVoice2 imported", flush=True)
+    _ensure_imports()
 
     if not os.path.exists(os.path.join(MODEL_DIR, "cosyvoice.yaml")):
-        print(f"[lazy-init] Model not found at {MODEL_DIR}, downloading...", flush=True)
+        print(f"[init] Downloading model to {MODEL_DIR}...", flush=True)
         from huggingface_hub import snapshot_download
         snapshot_download("FunAudioLLM/CosyVoice2-0.5B", local_dir=MODEL_DIR)
-        print("[lazy-init] Model downloaded.", flush=True)
+        print("[init] Model downloaded.", flush=True)
 
-    print(f"[lazy-init] Loading CosyVoice2 from {MODEL_DIR}...", flush=True)
-    _model = CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False)
-    print(f"[lazy-init] CosyVoice2 ready. sample_rate={_model.sample_rate}", flush=True)
+    print(f"[init] Loading CosyVoice2 from {MODEL_DIR}...", flush=True)
+    _model = _CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False)
+    print(f"[init] CosyVoice2 ready. sample_rate={_model.sample_rate}", flush=True)
     return _model
 
 
@@ -54,13 +74,13 @@ def decode_audio(audio_input: str) -> str:
         raw = requests.get(audio_input, timeout=30).content
     else:
         raw = base64.b64decode(audio_input)
-    waveform, sr = torchaudio.load(io.BytesIO(raw))
+    waveform, sr = _torchaudio.load(io.BytesIO(raw))
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
     if sr != 16000:
-        waveform = torchaudio.transforms.Resample(sr, 16000)(waveform)
+        waveform = _torchaudio.transforms.Resample(sr, 16000)(waveform)
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    torchaudio.save(tmp.name, waveform, 16000)
+    _torchaudio.save(tmp.name, waveform, 16000)
     return tmp.name
 
 
@@ -69,6 +89,10 @@ def handler(job: dict) -> dict:
     text = inp.get("text", "").strip()
     if not text:
         return {"error": "text is required"}
+
+    # Quick health-check mode
+    if text == "__ping__":
+        return {"status": "ok", "message": "handler alive"}
 
     mode = inp.get("mode", "zero_shot")
     prompt_audio = inp.get("prompt_audio", "")
@@ -108,14 +132,14 @@ def handler(job: dict) -> dict:
         if not results:
             return {"error": "No audio generated"}
 
-        combined = torch.cat([r["tts_speech"] for r in results], dim=-1)
+        combined = _torch.cat([r["tts_speech"] for r in results], dim=-1)
         if speed != 1.0 and 0.5 <= speed <= 2.0:
-            combined, _ = torchaudio.sox_effects.apply_effects_tensor(
+            combined, _ = _torchaudio.sox_effects.apply_effects_tensor(
                 combined, model.sample_rate, [["tempo", str(speed)]]
             )
 
         buf = io.BytesIO()
-        torchaudio.save(buf, combined, model.sample_rate, format=fmt)
+        _torchaudio.save(buf, combined, model.sample_rate, format=fmt)
 
         return {
             "audio_base64": base64.b64encode(buf.getvalue()).decode(),
@@ -127,5 +151,5 @@ def handler(job: dict) -> dict:
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
-print("=== Starting RunPod handler ===", flush=True)
+print("=== Registering handler with RunPod ===", flush=True)
 runpod.serverless.start({"handler": handler})
