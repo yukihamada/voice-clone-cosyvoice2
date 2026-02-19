@@ -10,36 +10,42 @@ import traceback
 
 print("=== Handler starting ===", flush=True)
 
-try:
-    import runpod
-    print("runpod imported", flush=True)
-    import torch
-    print(f"torch {torch.__version__} imported", flush=True)
-    import torchaudio
-    print(f"torchaudio {torchaudio.__version__} imported", flush=True)
+import runpod
+print("runpod imported", flush=True)
+import torch
+print(f"torch {torch.__version__} imported, cuda={torch.cuda.is_available()}", flush=True)
+import torchaudio
+print(f"torchaudio {torchaudio.__version__} imported", flush=True)
 
-    sys.path.append("/app/CosyVoice")
-    sys.path.append("/app/CosyVoice/third_party/Matcha-TTS")
-
-    from cosyvoice.cli.cosyvoice import CosyVoice2
-    print("CosyVoice2 imported", flush=True)
-except Exception as e:
-    print(f"IMPORT ERROR: {e}", flush=True)
-    traceback.print_exc()
-    sys.exit(1)
+sys.path.append("/app/CosyVoice")
+sys.path.append("/app/CosyVoice/third_party/Matcha-TTS")
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/app/pretrained_models/CosyVoice2-0.5B")
 
-# Download model if not present
-if not os.path.exists(os.path.join(MODEL_DIR, "cosyvoice.yaml")):
-    print(f"Model not found at {MODEL_DIR}, downloading...", flush=True)
-    from huggingface_hub import snapshot_download
-    snapshot_download("FunAudioLLM/CosyVoice2-0.5B", local_dir=MODEL_DIR)
-    print("Model downloaded.", flush=True)
+# Lazy-loaded model — initialized on first request so runpod.serverless.start()
+# is called immediately and the worker doesn't crash before registering.
+_model = None
 
-print(f"Loading CosyVoice2 from {MODEL_DIR}...", flush=True)
-model = CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False)
-print(f"CosyVoice2 ready. sample_rate={model.sample_rate}", flush=True)
+
+def _get_model():
+    global _model
+    if _model is not None:
+        return _model
+
+    print(f"[lazy-init] Importing CosyVoice2...", flush=True)
+    from cosyvoice.cli.cosyvoice import CosyVoice2
+    print(f"[lazy-init] CosyVoice2 imported", flush=True)
+
+    if not os.path.exists(os.path.join(MODEL_DIR, "cosyvoice.yaml")):
+        print(f"[lazy-init] Model not found at {MODEL_DIR}, downloading...", flush=True)
+        from huggingface_hub import snapshot_download
+        snapshot_download("FunAudioLLM/CosyVoice2-0.5B", local_dir=MODEL_DIR)
+        print("[lazy-init] Model downloaded.", flush=True)
+
+    print(f"[lazy-init] Loading CosyVoice2 from {MODEL_DIR}...", flush=True)
+    _model = CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False)
+    print(f"[lazy-init] CosyVoice2 ready. sample_rate={_model.sample_rate}", flush=True)
+    return _model
 
 
 def decode_audio(audio_input: str) -> str:
@@ -73,6 +79,8 @@ def handler(job: dict) -> dict:
     fmt = inp.get("format", "mp3")
 
     try:
+        model = _get_model()
+
         if mode == "zero_shot":
             if not prompt_audio:
                 return {"error": "prompt_audio required for zero_shot"}
@@ -116,8 +124,8 @@ def handler(job: dict) -> dict:
             "duration_ms": int(combined.shape[-1] / model.sample_rate * 1000),
         }
     except Exception as e:
-        import traceback
         return {"error": str(e), "traceback": traceback.format_exc()}
 
 
+print("=== Starting RunPod handler ===", flush=True)
 runpod.serverless.start({"handler": handler})
