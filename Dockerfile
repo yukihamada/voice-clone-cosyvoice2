@@ -17,9 +17,10 @@ RUN git clone --depth 1 https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVo
     pip install --no-cache-dir --no-build-isolation openai-whisper==20231117 && \
     cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt
 
-# Remove torchvision (pulled by transformers, uses register_fake which needs torch>=2.6)
-# CosyVoice doesn't need it
-RUN pip uninstall -y torchvision 2>/dev/null; true
+# Fix ABI: CosyVoice deps may install wrong torchaudio; reinstall matching versions
+# Remove torchvision (uses register_fake which needs torch>=2.6)
+RUN pip uninstall -y torchvision 2>/dev/null; true && \
+    pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
 # Install handler deps
 RUN pip install --no-cache-dir runpod requests huggingface_hub
