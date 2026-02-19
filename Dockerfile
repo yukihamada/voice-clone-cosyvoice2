@@ -7,10 +7,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# CUDA nvcc compiler via pip (needed by transformers CUDA op compilation)
-RUN pip install --no-cache-dir nvidia-cuda-nvcc-cu12 nvidia-cuda-runtime-cu12
-ENV CUDA_HOME=/opt/conda
-
 # Pre-install build deps that CosyVoice requirements need
 RUN pip install --no-cache-dir cython setuptools
 
@@ -26,9 +22,17 @@ RUN git clone --depth 1 https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVo
 RUN pip uninstall -y torchvision 2>/dev/null; true && \
     pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
+# Install CUDA nvcc AFTER requirements (so setup.py doesn't try to compile CUDA ops at build time)
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cuda-nvcc-12-1 && \
+    rm -rf /var/lib/apt/lists/* cuda-keyring_1.1-1_all.deb
+
 # Install handler deps
 RUN pip install --no-cache-dir runpod requests huggingface_hub
 
+ENV CUDA_HOME=/usr/local/cuda
 ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS:${PYTHONPATH}"
 
 # Model will be downloaded at startup if not present (keeps image small)
