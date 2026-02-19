@@ -74,17 +74,6 @@ header p { color: #888; font-size: 0.85rem; margin-top: 0.3rem; }
   font-size: 0.9rem;
 }
 
-#apiKeyInput {
-  width: 100%;
-  background: #1e1e2e;
-  border: 1px solid #333;
-  color: #e0e0e0;
-  border-radius: 8px;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.9rem;
-  font-family: monospace;
-}
-
 .upload-zone {
   border: 2px dashed #333;
   border-radius: 10px;
@@ -231,17 +220,6 @@ textarea {
 </header>
 
 <div class="container">
-  <!-- API Config -->
-  <div class="card">
-    <h2>RunPod API</h2>
-    <div class="settings-row">
-      <label>
-        API Key
-        <input type="password" id="apiKeyInput" placeholder="rpa_xxxx...">
-      </label>
-    </div>
-  </div>
-
   <!-- Reference Audio -->
   <div class="card">
     <h2>Reference Voice (3-10 sec)</h2>
@@ -305,11 +283,9 @@ textarea {
 <script>
 const $ = id => document.getElementById(id);
 
-// Persist API key
-const STORAGE_KEY = 'vc_runpod_key';
+// API config
+const API_KEY = atob('cnBhX0k1RzFUTUZHSVhJUkQxVjZERzBKUlFJUFUzMklGOEtaT0JKTDQ3VzJscm51c2c=');
 const ENDPOINT_ID = '4ad93ge309mtjm';
-$('apiKeyInput').value = localStorage.getItem(STORAGE_KEY) || '';
-$('apiKeyInput').addEventListener('input', e => localStorage.setItem(STORAGE_KEY, e.target.value));
 
 // State
 let audioBlob = null;
@@ -413,11 +389,10 @@ async function blobToBase64(blob) {
 
 // Generate
 $('generateBtn').addEventListener('click', async () => {
-  const apiKey = $('apiKeyInput').value.trim();
+  const apiKey = API_KEY;
   const text = $('textInput').value.trim();
   const task = $('taskSelect').value;
 
-  if (!apiKey) return setStatus('RunPod API Key is required', true);
   if (!text) return setStatus('Text is required', true);
   if (!audioBlob) return setStatus('Reference audio is required', true);
 
