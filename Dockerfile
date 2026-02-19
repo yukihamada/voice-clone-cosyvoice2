@@ -3,8 +3,12 @@ FROM pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ffmpeg sox libsox-dev wget ca-certificates && \
+    git ffmpeg sox libsox-dev wget ca-certificates \
+    build-essential && \
     rm -rf /var/lib/apt/lists/*
+
+# Pre-install build deps that CosyVoice requirements need
+RUN pip install --no-cache-dir cython setuptools
 
 # Clone CosyVoice and install its deps
 # openai-whisper's setup.py needs pkg_resources at build time, so install it without build isolation first
