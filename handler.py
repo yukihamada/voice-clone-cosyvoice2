@@ -17,6 +17,14 @@ sys.path.append("/app/CosyVoice/third_party/Matcha-TTS")
 from cosyvoice.cli.cosyvoice import CosyVoice2
 
 MODEL_DIR = os.environ.get("MODEL_DIR", "/app/pretrained_models/CosyVoice2-0.5B")
+
+# Download model if not present
+if not os.path.exists(os.path.join(MODEL_DIR, "cosyvoice.yaml")):
+    print(f"Model not found at {MODEL_DIR}, downloading...")
+    from huggingface_hub import snapshot_download
+    snapshot_download("FunAudioLLM/CosyVoice2-0.5B", local_dir=MODEL_DIR)
+    print("Model downloaded.")
+
 print(f"Loading CosyVoice2 from {MODEL_DIR}...")
 model = CosyVoice2(MODEL_DIR, load_jit=False, load_trt=False)
 print(f"CosyVoice2 ready. sample_rate={model.sample_rate}")
