@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Clone — CosyVoice2</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0a0a0f;
+  color: #e0e0e0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+header {
+  padding: 2rem 1rem 1rem;
+  text-align: center;
+}
+header h1 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+header p { color: #888; font-size: 0.85rem; margin-top: 0.3rem; }
+
+.container {
+  width: 100%;
+  max-width: 640px;
+  padding: 0 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+}
+
+.card {
+  background: #16161e;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  padding: 1.2rem;
+}
+.card h2 {
+  font-size: 0.85rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.8rem;
+}
+
+.settings-row {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+.settings-row label {
+  font-size: 0.8rem;
+  color: #aaa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 120px;
+}
+.settings-row input, .settings-row select {
+  background: #1e1e2e;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+#apiKeyInput {
+  width: 100%;
+  background: #1e1e2e;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  font-family: monospace;
+}
+
+.upload-zone {
+  border: 2px dashed #333;
+  border-radius: 10px;
+  padding: 1.5rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+}
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: #6366f1;
+  background: rgba(99,102,241,0.05);
+}
+.upload-zone p { color: #888; font-size: 0.85rem; }
+.upload-zone .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+#fileInput { display: none; }
+
+.audio-preview {
+  margin-top: 0.8rem;
+  display: none;
+  align-items: center;
+  gap: 0.8rem;
+  background: #1e1e2e;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+}
+.audio-preview.visible { display: flex; }
+.audio-preview audio { flex: 1; height: 36px; }
+.audio-preview .remove-btn {
+  background: none;
+  border: none;
+  color: #f87171;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.record-row {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+  align-items: center;
+}
+.btn-record {
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: background 0.2s;
+}
+.btn-record:hover { background: #b91c1c; }
+.btn-record.recording { background: #991b1b; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+.record-time { color: #888; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+
+textarea {
+  width: 100%;
+  background: #1e1e2e;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  border-radius: 8px;
+  padding: 0.7rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+}
+
+.btn-generate {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: white;
+  transition: opacity 0.2s, transform 0.1s;
+}
+.btn-generate:hover { opacity: 0.9; }
+.btn-generate:active { transform: scale(0.98); }
+.btn-generate:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.result {
+  display: none;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.result.visible { display: flex; }
+.result audio { width: 100%; }
+.result-meta { font-size: 0.8rem; color: #888; }
+.btn-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  background: #1e1e2e;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: none;
+  width: fit-content;
+}
+.btn-download:hover { border-color: #6366f1; }
+
+.status {
+  text-align: center;
+  font-size: 0.85rem;
+  color: #888;
+  display: none;
+}
+.status.visible { display: block; }
+.status.error { color: #f87171; }
+
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #444;
+  border-top-color: #a855f7;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Voice Clone</h1>
+  <p>CosyVoice2 on Replicate</p>
+</header>
+
+<div class="container">
+  <!-- API Config -->
+  <div class="card">
+    <h2>Replicate API</h2>
+    <div class="settings-row">
+      <label>
+        API Token
+        <input type="password" id="apiKeyInput" placeholder="r8_xxxx...">
+      </label>
+    </div>
+  </div>
+
+  <!-- Reference Audio -->
+  <div class="card">
+    <h2>Reference Voice (3-10 sec)</h2>
+    <div class="upload-zone" id="uploadZone">
+      <div class="icon">&#x1f3a4;</div>
+      <p>Drop audio file here or click to upload</p>
+      <p style="font-size: 0.75rem; color: #666; margin-top: 0.3rem;">WAV, MP3, M4A, WEBM</p>
+    </div>
+    <input type="file" id="fileInput" accept="audio/*">
+    <div class="audio-preview" id="audioPreview">
+      <audio id="previewPlayer" controls></audio>
+      <button class="remove-btn" id="removeBtn" title="Remove">&#x2715;</button>
+    </div>
+    <div class="record-row">
+      <button class="btn-record" id="recordBtn">&#x25CF; Record</button>
+      <span class="record-time" id="recordTime"></span>
+    </div>
+    <div style="margin-top: 0.6rem;">
+      <label style="font-size: 0.8rem; color: #aaa;">
+        Source Transcript (optional, improves quality)
+        <input type="text" id="sourceTranscript" placeholder="What is said in the reference audio..." style="width:100%;background:#1e1e2e;border:1px solid #333;color:#e0e0e0;border-radius:8px;padding:0.5rem 0.7rem;font-size:0.9rem;margin-top:0.3rem;">
+      </label>
+    </div>
+  </div>
+
+  <!-- Text & Settings -->
+  <div class="card">
+    <h2>Text to Synthesize</h2>
+    <textarea id="textInput" placeholder="Enter text to synthesize with the cloned voice..."></textarea>
+    <div class="settings-row" style="margin-top: 0.8rem;">
+      <label>
+        Task
+        <select id="taskSelect">
+          <option value="Zero-shot voice cloning" selected>Zero-Shot Clone</option>
+          <option value="Cross-lingual voice cloning">Cross-Lingual</option>
+          <option value="Instructed generation">Instruct</option>
+        </select>
+      </label>
+    </div>
+    <div id="instructRow" style="margin-top: 0.6rem; display: none;">
+      <label style="font-size: 0.8rem; color: #aaa;">
+        Instruction
+        <input type="text" id="instructInput" placeholder="e.g. Speak in Sichuan dialect" style="width:100%;background:#1e1e2e;border:1px solid #333;color:#e0e0e0;border-radius:8px;padding:0.5rem 0.7rem;font-size:0.9rem;margin-top:0.3rem;">
+      </label>
+    </div>
+  </div>
+
+  <!-- Generate -->
+  <button class="btn-generate" id="generateBtn">Generate Voice Clone</button>
+  <div class="status" id="status"></div>
+
+  <!-- Result -->
+  <div class="card result" id="resultCard">
+    <h2>Result</h2>
+    <audio id="resultPlayer" controls></audio>
+    <div class="result-meta" id="resultMeta"></div>
+    <a class="btn-download" id="downloadBtn" download="voice-clone.wav">&#x2193; Download</a>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// Persist API token
+const STORAGE_KEY = 'vc_replicate_token';
+$('apiKeyInput').value = localStorage.getItem(STORAGE_KEY) || '';
+$('apiKeyInput').addEventListener('input', e => localStorage.setItem(STORAGE_KEY, e.target.value));
+
+// State
+let audioBlob = null;
+let mediaRecorder = null;
+let recordTimer = null;
+let recordStart = 0;
+
+// Upload zone
+const uploadZone = $('uploadZone');
+uploadZone.addEventListener('click', () => $('fileInput').click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+$('fileInput').addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+function loadFile(file) {
+  audioBlob = file;
+  const url = URL.createObjectURL(file);
+  $('previewPlayer').src = url;
+  $('audioPreview').classList.add('visible');
+}
+
+$('removeBtn').addEventListener('click', () => {
+  audioBlob = null;
+  $('previewPlayer').src = '';
+  $('audioPreview').classList.remove('visible');
+  $('fileInput').value = '';
+});
+
+// Recording
+$('recordBtn').addEventListener('click', async () => {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const chunks = [];
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    mediaRecorder.ondataavailable = e => chunks.push(e.data);
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      clearInterval(recordTimer);
+      $('recordBtn').innerHTML = '&#x25CF; Record';
+      $('recordBtn').classList.remove('recording');
+      $('recordTime').textContent = '';
+      audioBlob = new Blob(chunks, { type: 'audio/webm' });
+      $('previewPlayer').src = URL.createObjectURL(audioBlob);
+      $('audioPreview').classList.add('visible');
+    };
+    mediaRecorder.start();
+    recordStart = Date.now();
+    $('recordBtn').innerHTML = '&#x25A0; Stop';
+    $('recordBtn').classList.add('recording');
+    recordTimer = setInterval(() => {
+      const sec = ((Date.now() - recordStart) / 1000).toFixed(1);
+      $('recordTime').textContent = `${sec}s`;
+    }, 100);
+    setTimeout(() => { if (mediaRecorder.state === 'recording') mediaRecorder.stop(); }, 15000);
+  } catch (err) {
+    setStatus('Microphone access denied', true);
+  }
+});
+
+// Task toggle
+$('taskSelect').addEventListener('change', e => {
+  $('instructRow').style.display = e.target.value === 'Instructed generation' ? 'block' : 'none';
+});
+
+// Status
+function setStatus(msg, isError = false) {
+  const el = $('status');
+  el.innerHTML = msg;
+  el.className = 'status visible' + (isError ? ' error' : '');
+}
+function hideStatus() { $('status').className = 'status'; }
+
+// Convert blob to data URI
+async function blobToDataURI(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// Generate
+$('generateBtn').addEventListener('click', async () => {
+  const apiToken = $('apiKeyInput').value.trim();
+  const text = $('textInput').value.trim();
+  const task = $('taskSelect').value;
+
+  if (!apiToken) return setStatus('Replicate API Token is required', true);
+  if (!text) return setStatus('Text is required', true);
+  if (!audioBlob) return setStatus('Reference audio is required', true);
+
+  const btn = $('generateBtn');
+  btn.disabled = true;
+  setStatus('<span class="spinner"></span>Uploading audio & starting prediction...');
+  $('resultCard').classList.remove('visible');
+
+  try {
+    // Convert audio to data URI for Replicate
+    const audioDataURI = await blobToDataURI(audioBlob);
+
+    const payload = {
+      version: "669b1cd618f2747d2237350e868f5c313f3b548fc803ca4e57adfaba778b042d",
+      input: {
+        task: task,
+        tts_text: text,
+        source_audio: audioDataURI,
+        source_transcript: $('sourceTranscript').value.trim() || undefined,
+      }
+    };
+
+    if (task === 'Instructed generation') {
+      payload.input.instruction = $('instructInput').value.trim();
+    }
+
+    // Create prediction (via local proxy to avoid CORS)
+    const baseUrl = window.location.origin;
+    const createResp = await fetch(`${baseUrl}/api/predictions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiToken}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let prediction = await createResp.json();
+
+    if (prediction.error) {
+      throw new Error(prediction.error.detail || prediction.error);
+    }
+
+    // Poll if not completed (Prefer: wait may timeout)
+    let pollCount = 0;
+    while (prediction.status !== 'succeeded' && prediction.status !== 'failed') {
+      pollCount++;
+      if (pollCount > 120) throw new Error('Prediction timed out after 10 minutes');
+
+      setStatus(`<span class="spinner"></span>Processing... (${prediction.status}, ${pollCount * 5}s)`);
+      await new Promise(r => setTimeout(r, 5000));
+
+      const pollResp = await fetch(`${baseUrl}/api/predictions/${prediction.id}`, {
+        headers: { 'Authorization': `Bearer ${apiToken}` },
+      });
+      prediction = await pollResp.json();
+    }
+
+    if (prediction.status === 'failed') {
+      throw new Error(prediction.error || 'Prediction failed');
+    }
+
+    // Get output audio URL
+    const outputUrl = prediction.output;
+    if (!outputUrl) throw new Error('No output audio returned');
+
+    // Fetch the audio
+    const audioResp = await fetch(outputUrl);
+    const audioData = await audioResp.blob();
+    const audioUrl = URL.createObjectURL(audioData);
+
+    $('resultPlayer').src = audioUrl;
+    $('resultMeta').textContent = `Prediction: ${prediction.id} | Metrics: ${JSON.stringify(prediction.metrics || {})}`;
+    $('downloadBtn').href = audioUrl;
+    $('downloadBtn').download = 'voice-clone.wav';
+    $('resultCard').classList.add('visible');
+    hideStatus();
+    $('resultPlayer').play();
+
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
