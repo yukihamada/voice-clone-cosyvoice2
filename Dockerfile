@@ -2,13 +2,14 @@ FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
 
 WORKDIR /app
 
-# Install system deps + CUDA nvcc compiler (needed by transformers CUDA ops)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ffmpeg sox libsox-dev wget ca-certificates \
-    build-essential cuda-nvcc-12-1 cuda-cudart-dev-12-1 && \
+    build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-ENV CUDA_HOME=/usr/local/cuda
+# CUDA nvcc compiler via pip (needed by transformers CUDA op compilation)
+RUN pip install --no-cache-dir nvidia-cuda-nvcc-cu12 nvidia-cuda-runtime-cu12
+ENV CUDA_HOME=/opt/conda
 
 # Pre-install build deps that CosyVoice requirements need
 RUN pip install --no-cache-dir cython setuptools
