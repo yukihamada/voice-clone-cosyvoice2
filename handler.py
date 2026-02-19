@@ -36,7 +36,9 @@ def _ensure_imports():
     _torch = torch
     print(f"[init] torch {torch.__version__} cuda={torch.cuda.is_available()}", flush=True)
     if torch.cuda.is_available():
-        print(f"[init] GPU: {torch.cuda.get_device_name(0)}, mem={torch.cuda.get_device_properties(0).total_mem / 1e9:.1f}GB", flush=True)
+        props = torch.cuda.get_device_properties(0)
+        mem_gb = getattr(props, 'total_memory', 0) / 1e9
+        print(f"[init] GPU: {torch.cuda.get_device_name(0)}, mem={mem_gb:.1f}GB", flush=True)
     import torchaudio
     _torchaudio = torchaudio
     print(f"[init] torchaudio {torchaudio.__version__}", flush=True)
