@@ -34,11 +34,12 @@ RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/
 RUN cd /app/CosyVoice/third_party/Matcha-TTS && \
     pip install --no-cache-dir --no-build-isolation .
 
-# Install handler deps
-RUN pip install --no-cache-dir runpod requests huggingface_hub
+# Install handler deps + pin huggingface_hub (cached_download removed in >=0.26)
+RUN pip install --no-cache-dir runpod requests "huggingface_hub<0.26"
 
-# Verify matcha is importable
-RUN python -c "import matcha; print(f'matcha OK: {matcha.__file__}')"
+# Verify matcha and huggingface_hub are importable
+RUN python -c "import matcha; print(f'matcha OK: {matcha.__file__}')" && \
+    python -c "from huggingface_hub import cached_download; print('cached_download OK')"
 
 ENV CUDA_HOME=/usr/local/cuda
 ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS"
