@@ -8,21 +8,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Pre-install build deps that CosyVoice requirements need
-RUN pip install --no-cache-dir cython setuptools
+RUN pip install --no-cache-dir cython setuptools numpy
 
-# Clone CosyVoice and install its deps
-# Remove torch/torchaudio pins to keep the pre-installed 2.5.1 (transformers 4.51.3 needs >=2.5)
+# Clone CosyVoice (with Matcha-TTS submodule) and install deps
+# Remove torch/torchaudio pins to keep the pre-installed 2.5.1
 RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
     https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice && \
     sed -i '/^torch==/d; /^torchaudio==/d' /app/CosyVoice/requirements.txt && \
     pip install --no-cache-dir --no-build-isolation openai-whisper==20231117 && \
-    cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt && \
-    cd /app/CosyVoice/third_party/Matcha-TTS && pip install --no-cache-dir .
+    cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt
 
-# Fix ABI: CosyVoice deps may install wrong torchaudio; reinstall matching versions
-# Remove torchvision (uses register_fake which needs torch>=2.6)
+# Fix ABI: CosyVoice deps may install wrong torchaudio; reinstall matching CUDA versions
+# --no-deps prevents pulling in CPU-only dependencies
 RUN pip uninstall -y torchvision 2>/dev/null; true && \
-    pip install --no-cache-dir torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+    pip install --no-cache-dir --no-deps torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cu121
 
 # Install CUDA nvcc AFTER requirements (so setup.py doesn't try to compile CUDA ops at build time)
 RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
@@ -31,11 +30,18 @@ RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/
     apt-get install -y --no-install-recommends cuda-nvcc-12-1 && \
     rm -rf /var/lib/apt/lists/* cuda-keyring_1.1-1_all.deb
 
+# Install Matcha-TTS AFTER torch is finalized (has Cython extension that links against torch)
+RUN cd /app/CosyVoice/third_party/Matcha-TTS && \
+    pip install --no-cache-dir --no-build-isolation .
+
 # Install handler deps
 RUN pip install --no-cache-dir runpod requests huggingface_hub
 
+# Verify matcha is importable
+RUN python -c "import matcha; print(f'matcha OK: {matcha.__file__}')"
+
 ENV CUDA_HOME=/usr/local/cuda
-ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS:${PYTHONPATH}"
+ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS"
 
 # Bake model into image to avoid 2-5min cold start download
 ENV MODEL_DIR=/app/pretrained_models/CosyVoice2-0.5B
