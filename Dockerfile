@@ -12,7 +12,8 @@ RUN pip install --no-cache-dir cython setuptools
 
 # Clone CosyVoice and install its deps
 # Remove torch/torchaudio pins to keep the pre-installed 2.5.1 (transformers 4.51.3 needs >=2.5)
-RUN git clone --depth 1 https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice && \
+RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
+    https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice && \
     sed -i '/^torch==/d; /^torchaudio==/d' /app/CosyVoice/requirements.txt && \
     pip install --no-cache-dir --no-build-isolation openai-whisper==20231117 && \
     cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt
