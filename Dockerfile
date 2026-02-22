@@ -16,7 +16,8 @@ RUN git clone --depth 1 --recurse-submodules --shallow-submodules \
     https://github.com/FunAudioLLM/CosyVoice.git /app/CosyVoice && \
     sed -i '/^torch==/d; /^torchaudio==/d' /app/CosyVoice/requirements.txt && \
     pip install --no-cache-dir --no-build-isolation openai-whisper==20231117 && \
-    cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt
+    cd /app/CosyVoice && pip install --no-cache-dir -r requirements.txt && \
+    cd /app/CosyVoice/third_party/Matcha-TTS && pip install --no-cache-dir -e .
 
 # Fix ABI: CosyVoice deps may install wrong torchaudio; reinstall matching versions
 # Remove torchvision (uses register_fake which needs torch>=2.6)
