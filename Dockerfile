@@ -34,8 +34,8 @@ RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/
 RUN cd /app/CosyVoice/third_party/Matcha-TTS && \
     pip install --no-cache-dir --no-build-isolation .
 
-# Install handler deps
-RUN pip install --no-cache-dir runpod requests huggingface_hub
+# Install handler deps (soundfile needed as torchaudio backend)
+RUN pip install --no-cache-dir runpod requests huggingface_hub soundfile
 
 # Patch huggingface_hub: add cached_download shim (removed in >=0.26, needed by modelscope)
 COPY patch_hf_hub.py /app/patch_hf_hub.py

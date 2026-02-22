@@ -50,6 +50,11 @@ def _ensure_imports():
         print(f"[init] GPU: {torch.cuda.get_device_name(0)}, mem={mem_gb:.1f}GB", flush=True)
     import torchaudio
     _torchaudio = torchaudio
+    # Use soundfile backend (TorchCodec not installed)
+    try:
+        torchaudio.set_audio_backend("soundfile")
+    except Exception:
+        pass
     print(f"[init] torchaudio {torchaudio.__version__}", flush=True)
 
     sys.path.insert(0, "/app/CosyVoice")
@@ -152,7 +157,10 @@ def handler(job: dict) -> dict:
             results = list(model.inference_instruct2(text, instruct_text, wav_path, stream=False))
             os.unlink(wav_path)
         elif mode == "sft":
-            spk = speaker_id or model.list_available_spks()[0]
+            available = model.list_available_spks()
+            if not available:
+                return {"error": "No SFT speakers available in this model"}
+            spk = speaker_id or available[0]
             results = list(model.inference_sft(text, spk, stream=False))
         else:
             return {"error": f"Unknown mode: {mode}"}
