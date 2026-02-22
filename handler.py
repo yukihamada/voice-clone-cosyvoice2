@@ -10,6 +10,15 @@ import traceback
 
 print("=== Handler starting ===", flush=True)
 
+# Patch: huggingface_hub>=0.26 removed cached_download, but modelscope still imports it
+try:
+    import huggingface_hub
+    if not hasattr(huggingface_hub, 'cached_download'):
+        huggingface_hub.cached_download = huggingface_hub.hf_hub_download
+        print("[patch] Added cached_download shim to huggingface_hub", flush=True)
+except Exception:
+    pass
+
 # Phase 1: Basic imports
 try:
     import runpod

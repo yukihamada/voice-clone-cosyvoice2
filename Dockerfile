@@ -34,33 +34,15 @@ RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/
 RUN cd /app/CosyVoice/third_party/Matcha-TTS && \
     pip install --no-cache-dir --no-build-isolation .
 
-# Install handler deps (latest huggingface_hub for transformers compatibility)
+# Install handler deps
 RUN pip install --no-cache-dir runpod requests huggingface_hub
 
-# Patch: add cached_download shim if missing (removed in huggingface_hub>=0.26,
-# but some CosyVoice/modelscope code still imports it)
-RUN python -c "\
-import huggingface_hub, inspect, os; \
-src = inspect.getfile(huggingface_hub); \
-init = os.path.join(os.path.dirname(src), '__init__.py'); \
-content = open(init).read(); \
-print('cached_download' in content and 'already has cached_download' or 'patching...'); \
-" && python -c "\
-import huggingface_hub; \
-try: \
-    from huggingface_hub import cached_download; \
-    print('cached_download exists, no patch needed'); \
-except ImportError: \
-    import os, inspect; \
-    init_path = os.path.join(os.path.dirname(inspect.getfile(huggingface_hub)), '__init__.py'); \
-    with open(init_path, 'a') as f: \
-        f.write('\n# Compatibility shim for removed cached_download\ntry:\n    cached_download\nexcept NameError:\n    from huggingface_hub import hf_hub_download as cached_download\n'); \
-    print('Patched cached_download shim'); \
-"
+# Patch huggingface_hub: add cached_download shim (removed in >=0.26, needed by modelscope)
+COPY patch_hf_hub.py /app/patch_hf_hub.py
+RUN python /app/patch_hf_hub.py
 
 # Verify imports
 RUN python -c "import matcha; print(f'matcha OK: {matcha.__file__}')" && \
-    python -c "from huggingface_hub import cached_download; print('cached_download OK')" && \
     python -c "import transformers; print(f'transformers OK: {transformers.__version__}')"
 
 ENV CUDA_HOME=/usr/local/cuda
