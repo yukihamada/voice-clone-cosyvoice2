@@ -35,8 +35,11 @@ RUN pip install --no-cache-dir runpod requests huggingface_hub
 ENV CUDA_HOME=/usr/local/cuda
 ENV PYTHONPATH="/app/CosyVoice:/app/CosyVoice/third_party/Matcha-TTS:${PYTHONPATH}"
 
-# Model will be downloaded at startup if not present (keeps image small)
+# Bake model into image to avoid 2-5min cold start download
 ENV MODEL_DIR=/app/pretrained_models/CosyVoice2-0.5B
+RUN python -c "from huggingface_hub import snapshot_download; \
+    snapshot_download('FunAudioLLM/CosyVoice2-0.5B', \
+    local_dir='/app/pretrained_models/CosyVoice2-0.5B')"
 
 COPY handler.py /app/handler.py
 

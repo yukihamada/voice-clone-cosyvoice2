@@ -71,19 +71,36 @@ def _get_model():
 
 
 def decode_audio(audio_input: str) -> str:
+    """Decode audio from base64 or URL, convert to 16kHz mono WAV via ffmpeg."""
     if audio_input.startswith(("http://", "https://")):
         import requests
         raw = requests.get(audio_input, timeout=30).content
     else:
         raw = base64.b64decode(audio_input)
-    waveform, sr = _torchaudio.load(io.BytesIO(raw))
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)
-    if sr != 16000:
-        waveform = _torchaudio.transforms.Resample(sr, 16000)(waveform)
-    tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-    _torchaudio.save(tmp.name, waveform, 16000)
-    return tmp.name
+
+    # Write raw bytes to a temp file (may be WebM, OGG, MP3, WAV, etc.)
+    tmp_in = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
+    tmp_in.write(raw)
+    tmp_in.flush()
+    tmp_in.close()
+
+    tmp_out = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    tmp_out.close()
+
+    # Use ffmpeg to convert any format to 16kHz mono WAV
+    import subprocess
+    result = subprocess.run(
+        ["ffmpeg", "-y", "-i", tmp_in.name, "-ar", "16000", "-ac", "1", tmp_out.name],
+        capture_output=True, timeout=30,
+    )
+    os.unlink(tmp_in.name)
+
+    if result.returncode != 0:
+        os.unlink(tmp_out.name)
+        stderr = result.stderr.decode(errors="replace")
+        raise RuntimeError(f"ffmpeg failed: {stderr[:500]}")
+
+    return tmp_out.name
 
 
 def handler(job: dict) -> dict:

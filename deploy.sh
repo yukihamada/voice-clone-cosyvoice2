@@ -9,10 +9,10 @@ set -euo pipefail
 #   - RunPod account + API key
 #   - Docker Hub or RunPod registry credentials
 
-IMAGE_NAME="voice-clone-cosyvoice2"
+IMAGE_NAME="cosyvoice2-runpod"
 TAG="${1:-latest}"
 REGISTRY="${RUNPOD_REGISTRY:-docker.io}"
-REPO="${RUNPOD_REPO:-$(whoami)/${IMAGE_NAME}}"
+REPO="${RUNPOD_REPO:-yukihamada/${IMAGE_NAME}}"
 FULL_IMAGE="${REGISTRY}/${REPO}:${TAG}"
 
 echo "=== CosyVoice2 Voice Clone — RunPod Deploy ==="
