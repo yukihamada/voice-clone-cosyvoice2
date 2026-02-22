@@ -170,18 +170,44 @@ def handler(job: dict) -> dict:
 
         combined = _torch.cat([r["tts_speech"] for r in results], dim=-1)
         if speed != 1.0 and 0.5 <= speed <= 2.0:
-            combined, _ = _torchaudio.sox_effects.apply_effects_tensor(
-                combined, model.sample_rate, [["tempo", str(speed)]]
-            )
+            try:
+                combined, _ = _torchaudio.sox_effects.apply_effects_tensor(
+                    combined, model.sample_rate, [["tempo", str(speed)]]
+                )
+            except Exception as e:
+                print(f"[warn] sox_effects failed (speed adjust): {e}", flush=True)
 
-        buf = io.BytesIO()
-        _torchaudio.save(buf, combined, model.sample_rate, format=fmt)
+        duration_ms = int(combined.shape[-1] / model.sample_rate * 1000)
+
+        # Save as WAV first (torchaudio always supports WAV)
+        tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        tmp_wav.close()
+        _torchaudio.save(tmp_wav.name, combined, model.sample_rate)
+
+        # Convert to requested format via ffmpeg
+        if fmt in ("mp3", "ogg", "flac"):
+            import subprocess
+            tmp_out = tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False)
+            tmp_out.close()
+            subprocess.run(
+                ["ffmpeg", "-y", "-i", tmp_wav.name, "-q:a", "2", tmp_out.name],
+                capture_output=True, timeout=30,
+            )
+            os.unlink(tmp_wav.name)
+            with open(tmp_out.name, "rb") as f:
+                audio_bytes = f.read()
+            os.unlink(tmp_out.name)
+        else:
+            with open(tmp_wav.name, "rb") as f:
+                audio_bytes = f.read()
+            os.unlink(tmp_wav.name)
+            fmt = "wav"
 
         return {
-            "audio_base64": base64.b64encode(buf.getvalue()).decode(),
+            "audio_base64": base64.b64encode(audio_bytes).decode(),
             "sample_rate": model.sample_rate,
             "format": fmt,
-            "duration_ms": int(combined.shape[-1] / model.sample_rate * 1000),
+            "duration_ms": duration_ms,
         }
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}
