@@ -92,11 +92,25 @@ def decode_audio(audio_input: str) -> str:
     else:
         raw = base64.b64decode(audio_input)
 
-    # Write raw bytes to a temp file (may be WebM, OGG, MP3, WAV, etc.)
-    tmp_in = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
+    # Detect format from magic bytes and use appropriate extension
+    ext = ".bin"
+    if raw[:4] == b'RIFF':
+        ext = ".wav"
+    elif raw[:4] == b'\x1aE\xdf\xa3':
+        ext = ".webm"
+    elif raw[:3] == b'ID3' or raw[:2] == b'\xff\xfb':
+        ext = ".mp3"
+    elif raw[:4] == b'OggS':
+        ext = ".ogg"
+    elif raw[:4] == b'fLaC':
+        ext = ".flac"
+
+    tmp_in = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
     tmp_in.write(raw)
     tmp_in.flush()
     tmp_in.close()
+
+    print(f"[decode_audio] input: {len(raw)} bytes, ext={ext}, file={tmp_in.name}", flush=True)
 
     tmp_out = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     tmp_out.close()
@@ -112,7 +126,8 @@ def decode_audio(audio_input: str) -> str:
     if result.returncode != 0:
         os.unlink(tmp_out.name)
         stderr = result.stderr.decode(errors="replace")
-        raise RuntimeError(f"ffmpeg failed: {stderr[:500]}")
+        # Use last 500 chars to get actual error (not ffmpeg version banner)
+        raise RuntimeError(f"ffmpeg decode error: {stderr[-500:]}")
 
     return tmp_out.name
 
@@ -134,6 +149,10 @@ def handler(job: dict) -> dict:
     speaker_id = inp.get("speaker_id", "")
     speed = float(inp.get("speed", 1.0))
     fmt = inp.get("format", "mp3")
+
+    if mode == "zero_shot" and not prompt_text.strip():
+        prompt_text = text[:50]
+        print(f"[fix] Empty prompt_text, using synthesis text prefix: '{prompt_text}'", flush=True)
 
     try:
         model = _get_model()
@@ -169,6 +188,17 @@ def handler(job: dict) -> dict:
             return {"error": "No audio generated"}
 
         combined = _torch.cat([r["tts_speech"] for r in results], dim=-1)
+
+        # 音声長チェック: 日本語は1文字≒0.15秒、期待長の1.8倍を超えたら冒頭にリーク疑い→トリミング
+        if mode == "zero_shot":
+            expected_sec = max(len(text) * 0.15, 1.0)
+            actual_sec = combined.shape[-1] / model.sample_rate
+            if actual_sec > expected_sec * 1.8 and actual_sec > 3.0:
+                trim_sec = actual_sec - expected_sec * 1.2
+                trim_samples = int(trim_sec * model.sample_rate)
+                print(f"[fix] Audio too long ({actual_sec:.1f}s vs expected {expected_sec:.1f}s), trimming {trim_sec:.1f}s from start", flush=True)
+                combined = combined[..., trim_samples:]
+
         if speed != 1.0 and 0.5 <= speed <= 2.0:
             try:
                 combined, _ = _torchaudio.sox_effects.apply_effects_tensor(
